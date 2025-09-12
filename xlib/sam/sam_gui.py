@@ -24,12 +24,16 @@ class SAM:
         model_path = os.path.join(os.path.dirname(__file__), "model", model_file)
         if not os.path.exists(model_path):
             print(f"Model checkpoint not found at {model_path}. Downloading...")
-            os.system(f"wget https://dl.fbaipublicfiles.com/segment_anything/{model_file} -O {model_path}")
+            os.system(
+                f"wget https://dl.fbaipublicfiles.com/segment_anything/{model_file} -O {model_path}"
+            )
         sam = sam_model_registry[model_type](checkpoint=model_path)
         sam.to(device=device)
         self.predictor = SamPredictor(sam)
         self.points = []
         self.background_points = []
+        self.cache_points = []
+        self.cache_background_points = []
         self._current_img_idx = 0
         self.done = False
 
@@ -39,7 +43,10 @@ class SAM:
             mask_img = np.zeros_like(self.img)
             if self.mask is not None:
                 mask_img[self.mask] = self.img[self.mask]
+                # mask_img[self.mask == False] = 255
             self.mask_img = mask_img
+            self.cache_points = self.points
+            self.cache_background_points = self.background_points
             self.points = []
             self.background_points = []
             if self.mode == "dir":
@@ -139,7 +146,24 @@ class SAM:
         plt.imshow(self.img)
         while not self.done:
             plt.pause(0.001)
-        return self.mask_img, self.mask
+        return self.mask_img, self.mask, self.cache_points, self.cache_background_points
+
+    def segment_img_from_points(self, img, points, background_points):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        self.predictor.set_image(img)
+        mask, _, _ = self.predictor.predict(
+            point_coords=np.array(points + background_points),
+            point_labels=np.array([1] * len(points) + [0] * len(background_points)),
+            multimask_output=False,
+        )
+        mask = mask[0].astype(np.uint8)
+        mask = mask == 1
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        mask_img = np.zeros_like(img)
+        if mask is not None:
+            mask_img[mask] = img[mask]
+
+        return mask_img, mask
 
     def segment(self, input_path: str, output_path: str):
         self.mode = "dir"

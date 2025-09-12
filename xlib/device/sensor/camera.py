@@ -4,7 +4,6 @@ import cv2
 import logging
 from ...algo.cv.detector import get_aruco_pose
 
-
 class Camera:
     def __init__(self, width=640, height=480):
         self.fx = None
@@ -48,7 +47,9 @@ class Camera:
 
         return cls
 
-    def set_param(self, fx, fy, cx, cy, width=640, height=480, distortion=None):
+    def set_param(
+        self, fx, fy, cx, cy, width=640, height=480, distortion=None, *args, **kwargs
+    ):
         self.fx = fx
         self.fy = fy
         self.cx = cx
@@ -139,7 +140,7 @@ class RealSenseCamera(Camera):
         short_range=None,
         exposure_time=None,
         align_to=rs.stream.color,
-        serail_number=None,
+        serial_number=None,
     ):
         super().__init__()
 
@@ -147,8 +148,8 @@ class RealSenseCamera(Camera):
         self.pipeline = rs.pipeline()
 
         config = rs.config()
-        if serail_number is not None:
-            config.enable_device(serail_number)
+        if serial_number is not None:
+            config.enable_device(serial_number)
 
         config.enable_stream(
             rs.stream.color, color_width, color_height, rs.format.bgr8, frame_rate
@@ -161,12 +162,13 @@ class RealSenseCamera(Camera):
         profile = self.pipeline.get_active_profile()
         device = profile.get_device()
         depth_sensor = device.first_depth_sensor()
-        color_sensor = device.query_sensors()[1]
+        color_sensor = device.first_color_sensor()
         if exposure_time is not None:
             color_sensor.set_option(rs.option.enable_auto_exposure, 0)
             color_sensor.set_option(rs.option.exposure, exposure_time)
         else:
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+        
         if short_range:
             depth_sensor.set_option(rs.option.visual_preset, 5)
         else:
@@ -205,9 +207,9 @@ class RealSenseCamera(Camera):
         frames = self.align_to_color.process(frames)
         color_frame = frames.get_color_frame()
         depth_frame = frames.get_depth_frame()
-        color_img = color_frame.get_data()
-        depth_img = depth_frame.get_data()
-        depth_img = np.asanyarray(depth_img).astype(np.float32) * self.depth_scale
+        color_img = np.asanyarray(color_frame.get_data())
+        depth_img = np.asanyarray(depth_frame.get_data())
+        depth_img = depth_img.astype(np.float32) * self.depth_scale
         self.color_img = color_img
         self.depth_img = depth_img
         return self.color_img, self.depth_img
@@ -238,3 +240,4 @@ class RealSenseCamera(Camera):
         out.release()
         logging.info("End recording Video")
         cv2.destroyAllWindows()
+

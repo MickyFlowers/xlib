@@ -12,7 +12,20 @@ class UR(Manipulator):
         self.base_to_world = base_to_world
         self.rtde_c = rtde_control.RTDEControlInterface(ip)
         self.rtde_r = rtde_receive.RTDEReceiveInterface(ip)
+        
+    @property
+    def tcp_pose(self) -> np.ndarray:
+        pose_vec = self.rtde_r.getActualTCPPose()
+        trans_matrix = np.eye(4)
+        rot_matrix = R.from_rotvec(pose_vec[3:]).as_matrix()
+        trans_matrix[:3, :3] = rot_matrix
+        trans_matrix[:3, 3] = pose_vec[:3]
+        return trans_matrix
 
+    @property
+    def joint_position(self) -> np.ndarray:
+        return self.rtde_r.getActualQ()
+    
     @property
     def world_pose(self) -> np.ndarray:
         pose_vec = self.rtde_r.getActualTCPPose()
@@ -21,7 +34,13 @@ class UR(Manipulator):
         trans_matrix[:3, :3] = rot_matrix
         trans_matrix[:3, 3] = pose_vec[:3]
         return self.base_to_world @ trans_matrix
-
+    
+    def servoJoint(self, q, dt, vel=0.5, acc=0.5, lookahead_time=0.1, gain=300) -> None:
+        self.rtde_c.servoJ(q, vel, acc, dt, lookahead_time, gain)
+        
+    def moveJoint(self, q, vel=1.0, acc=1.0, asynchronous=False):
+        self.rtde_c.moveJ(q, vel, acc, asynchronous)
+        
     def applyTcpVel(self, tcp_vel: np.ndarray, acc=1.0, time=0.0) -> None:
         pose_vec = self.rtde_r.getActualTCPPose()
         rot_matrix = R.from_rotvec(pose_vec[3:]).as_matrix()
@@ -36,16 +55,7 @@ class UR(Manipulator):
         rot_matrix = np.linalg.inv(self.base_to_world[:3, :3])
         world_vel = velTransform(world_vel, rot_matrix)
         self.rtde_c.speedL(world_vel, acc, time)
-
-    @property
-    def tcp_pose(self) -> np.ndarray:
-        pose_vec = self.rtde_r.getActualTCPPose()
-        trans_matrix = np.eye(4)
-        rot_matrix = R.from_rotvec(pose_vec[3:]).as_matrix()
-        trans_matrix[:3, :3] = rot_matrix
-        trans_matrix[:3, 3] = pose_vec[:3]
-        return trans_matrix
-
+        
     def stop(self, acc=10.0) -> None:
         self.rtde_c.stopL(acc)
         self.rtde_c.stopJ(acc)

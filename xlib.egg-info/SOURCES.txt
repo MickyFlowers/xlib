@@ -1,4 +1,8 @@
+.gitignore
+.gitmodules
 setup.py
+.vscode/c_cpp_properties.json
+.vscode/settings.json
 xlib/__init__.py
 xlib.egg-info/PKG-INFO
 xlib.egg-info/SOURCES.txt
@@ -30,6 +34,7 @@ xlib/device/robotiq/__init__.py
 xlib/device/robotiq/robotiq_gripper.py
 xlib/device/sensor/__init__.py
 xlib/device/sensor/camera.py
+xlib/device/sensor/perception.py
 xlib/log/__init__.py
 xlib/sam/__init__.py
 xlib/sam/sam_gui.py

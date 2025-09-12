@@ -85,7 +85,7 @@ class RomaMatchAlgo:
 
 
 class KpMatchAlgo:
-    def __init__(self, kp_extractor: str = "SIFT", match_threshold=0.75) -> None:
+    def __init__(self, kp_extractor: str = "SIFT", match_threshold=0.6) -> None:
         self.match_threshold = match_threshold
         self.kp_extractor = self._parser_kp_extractor(kp_extractor)
         self.matcher = cv2.FlannBasedMatcher()
@@ -159,7 +159,8 @@ class KpMatchAlgo:
             kp2_array = kp2_array[mask].reshape(-1, 2)
             mask_indices = np.where(mask)[0]
             good_matches = [good_matches[i] for i in mask_indices]
-
+        if len(good_matches) < 20:
+            return None, None, None
         match_img = cv2.drawMatchesKnn(
             img1,
             kp1,

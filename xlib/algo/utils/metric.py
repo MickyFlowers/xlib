@@ -15,10 +15,9 @@ def calc_psnr(
     img1: Union[np.ndarray, torch.Tensor],
     img2: Union[np.ndarray, torch.Tensor],
     max_pixel=1.0,
-    reduction="sum",
 ) -> float:
     if isinstance(img1, torch.Tensor) and isinstance(img2, torch.Tensor):
-        mse = F.mse_loss(img1, img2, reduction=reduction)
+        mse = torch.mean((img1 - img2) ** 2)
         if mse == 0:
             return float("inf")
         psnr = 20 * torch.log10(max_pixel / torch.sqrt(mse))

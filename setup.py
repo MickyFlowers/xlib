@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="xlib",
     version="0.1.0",
-    packages=find_packages(where="."),
+    packages=find_packages(),
     install_requires=[
         "pyrealsense2==2.54.1.5216",
         "numpy",
