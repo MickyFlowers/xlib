@@ -1,10 +1,12 @@
+import time
+
 import numpy as np
 import rtde_control
 import rtde_receive
-from ...algo.utils.transforms import *
 from scipy.spatial.transform import Rotation as R
+
+from ...algo.utils.transforms import *
 from .manipulator_base import Manipulator
-import time
 
 
 class UR(Manipulator):
@@ -12,7 +14,13 @@ class UR(Manipulator):
         self.base_to_world = base_to_world
         self.rtde_c = rtde_control.RTDEControlInterface(ip)
         self.rtde_r = rtde_receive.RTDEReceiveInterface(ip)
-        
+        self.frequency = 125  # Hz
+
+    @property
+    def tcp_velocity(self) -> np.ndarray:
+        vel_vec = self.rtde_r.getActualTCPSpeed()
+        return np.array(vel_vec)
+
     @property
     def tcp_pose(self) -> np.ndarray:
         pose_vec = self.rtde_r.getActualTCPPose()
@@ -23,9 +31,14 @@ class UR(Manipulator):
         return trans_matrix
 
     @property
+    def tcp_pose_vec(self) -> np.ndarray:
+        pose_vec = self.rtde_r.getActualTCPPose()
+        return np.array(pose_vec)
+
+    @property
     def joint_position(self) -> np.ndarray:
         return self.rtde_r.getActualQ()
-    
+
     @property
     def world_pose(self) -> np.ndarray:
         pose_vec = self.rtde_r.getActualTCPPose()
@@ -34,13 +47,21 @@ class UR(Manipulator):
         trans_matrix[:3, :3] = rot_matrix
         trans_matrix[:3, 3] = pose_vec[:3]
         return self.base_to_world @ trans_matrix
-    
-    def servoJoint(self, q, dt, vel=0.5, acc=0.5, lookahead_time=0.1, gain=300) -> None:
+
+    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=300.0) -> None:
+        if pose.shape == (4, 4):
+            pos_vec = pose[:3, 3]
+            rot_matrix = pose[:3, :3]
+            rot_vec = R.from_matrix(rot_matrix).as_rotvec()
+            pose = np.concatenate((pos_vec, rot_vec))
+        self.rtde_c.servoL(pose, 0.5, 0.5, dt, lookahead_time, gain)
+
+    def servoJoint(self, q, dt, vel=0.5, acc=0.5, lookahead_time=0.1, gain=300.0) -> None:
         self.rtde_c.servoJ(q, vel, acc, dt, lookahead_time, gain)
-        
+
     def moveJoint(self, q, vel=1.0, acc=1.0, asynchronous=False):
         self.rtde_c.moveJ(q, vel, acc, asynchronous)
-        
+
     def applyTcpVel(self, tcp_vel: np.ndarray, acc=1.0, time=0.0) -> None:
         pose_vec = self.rtde_r.getActualTCPPose()
         rot_matrix = R.from_rotvec(pose_vec[3:]).as_matrix()
@@ -55,7 +76,7 @@ class UR(Manipulator):
         rot_matrix = np.linalg.inv(self.base_to_world[:3, :3])
         world_vel = velTransform(world_vel, rot_matrix)
         self.rtde_c.speedL(world_vel, acc, time)
-        
+
     def stop(self, acc=10.0) -> None:
         self.rtde_c.stopL(acc)
         self.rtde_c.stopJ(acc)
@@ -78,9 +99,7 @@ class UR(Manipulator):
         world_pose = np.linalg.inv(self.base_to_world) @ pose
         self.moveToPose(world_pose, vel, acc, asynchronous)
 
-    def moveToWorldErrorPose(
-        self, pose, jnt_error, vel=0.25, acc=1.2, asynchronous=False
-    ):
+    def moveToWorldErrorPose(self, pose, jnt_error, vel=0.25, acc=1.2, asynchronous=False):
         tcp_pose = np.linalg.inv(self.base_to_world) @ pose
         # self.moveToPose(tcp_pose, vel, acc, False)
         # time.sleep(0.2)
@@ -101,3 +120,10 @@ class UR(Manipulator):
             q += jnt_error
             self.rtde_c.moveJ(q, vel, acc, asynchronous)
             return True
+
+    def initPeriod(self):
+        start_time = self.rtde_c.initPeriod()
+        return start_time
+
+    def waitPeriod(self, start_time):
+        self.rtde_c.waitPeriod(start_time)

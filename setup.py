@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="xlib",
@@ -11,6 +11,8 @@ setup(
         "matplotlib",
         "scipy",
         "ur-rtde",
+        "pymodbus==2",
+        "pyserial",
     ],
     entry_points={
         "console_scripts": [],

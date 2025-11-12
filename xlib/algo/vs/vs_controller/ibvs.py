@@ -6,9 +6,51 @@ import cv2
 import copy
 from .vs_controller_base import VisualServoControllerBase
 from .cnsv2_simple_cilent import SimpleClient
+from .CNS.cns.utils.perception import CameraIntrinsic
+from .CNS.cns.benchmark.pipeline import CorrespondenceBasedPipeline, VisOpt
 
 
-class CNSV2(VisualServoControllerBase):
+class CNSv1(VisualServoControllerBase):
+    def __init__(self, camera: Camera, *args, **kwargs):
+        self.camera = camera
+        self.cur_img = None
+        self.tar_img = None
+        self.controller = CorrespondenceBasedPipeline(
+            ckpt_path="/home/cyx/project/xlib/xlib/algo/vs/vs_controller/CNS/checkpoints/cns_state_dict.pth",
+            detector="superglue",  # this could be ORB, AKAZE, or any other existing methods# in OpenCV, and additionally, SuperGlue
+            device="cuda:0",  # or "cpu" if cuda is not available
+            intrinsic=CameraIntrinsic.default(),  # we use default camera intrinsic here,
+            # changes to your camera intrinsic
+            ransac=True,  # whether conduct ransac after keypoints detection and matching
+            # vis=VisOpt.ALL  # can be KP (keypoints), MATCH, GRAPH and their combinitions, or NO
+            vis=VisOpt.MATCH,
+        )
+
+    def update(self, *args, **kwargs):
+        if "cur_img" in kwargs:
+            assert isinstance(
+                kwargs["cur_img"], np.ndarray
+            ), "Image should be a numpy array"
+            self.cur_img = kwargs["cur_img"]
+        if "tar_img" in kwargs:
+            assert isinstance(
+                kwargs["tar_img"], np.ndarray
+            ), "Image should be a numpy array"
+            self.tar_img = kwargs["tar_img"]
+
+    def calc_vel(self, depth_hint, mask=None):
+        color_image = copy.deepcopy(self.cur_img)
+        tar_image = copy.deepcopy(self.tar_img)
+        tar_image[mask] = 0
+        score = metric.calc_ssim(tar_image, color_image)
+        self.controller.set_target(tar_image, dist_scale=depth_hint)
+        vel, data, timing = self.controller.get_control_rate(color_image)
+
+        match_img = np.concatenate([tar_image, color_image], axis=1)
+        return True, vel, score, match_img
+
+
+class CNSv2(VisualServoControllerBase):
     def __init__(self, camera: Camera, model="CNSv2_m0117", *args, **kwargs):
         self.camera = camera
         self.cur_img = None
@@ -26,16 +68,18 @@ class CNSV2(VisualServoControllerBase):
                 kwargs["tar_img"], np.ndarray
             ), "Image should be a numpy array"
             self.tar_img = kwargs["tar_img"]
-            
 
     def calc_vel(self, depth_hint, mask=None):
         color_image = copy.deepcopy(self.cur_img)
         tar_image = copy.deepcopy(self.tar_img)
         score = metric.calc_ssim(tar_image, color_image)
-        tar_image[mask] = 0
-        self.controller.set_target(tar_image, self.camera.intrinsics_matrix, depth_hint=depth_hint, None)
+        if mask is not None:
+            tar_image[mask] = 0
+        self.controller.set_target(
+            tar_image, self.camera.intrinsics_matrix, depth_hint=depth_hint, mask=None
+        )
         vel = self.controller.get_control_rate(color_image)
-        
+
         match_img = np.concatenate([tar_image, color_image], axis=1)
         return True, vel, score, match_img
 

@@ -1,6 +1,0 @@
-pyrealsense2==2.54.1.5216
-numpy
-opencv-python
-matplotlib
-scipy
-ur-rtde

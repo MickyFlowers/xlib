@@ -176,7 +176,7 @@ class RealSenseCamera(Camera):
         self.depth_scale = depth_sensor.get_depth_scale()
         profile = cfg.get_stream(rs.stream.color)
         intrinsics = profile.as_video_stream_profile().get_intrinsics()
-
+        print(intrinsics)
         self.set_param(
             fx=intrinsics.fx,
             fy=intrinsics.fy,

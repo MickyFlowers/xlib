@@ -50,7 +50,8 @@ class RomaMatchAlgo:
             x1, y1 = kptsA_array_int[:, 0], kptsA_array_int[:, 1]
             x2, y2 = kptsB_array_int[:, 0], kptsB_array_int[:, 1]
             mask = mask[y1, x1] & mask[y2, x2]
-            print(mask.sum(), kptsA_array_int.shape[0])
+            # mask = mask[y1, x1]
+            # print(mask.sum(), kptsA_array_int.shape[0])
             mask = ~mask
 
             kptsA_array = kptsA_array[mask]
@@ -139,6 +140,7 @@ class KpMatchAlgo:
             x1, y1 = kp1_array_int[:, 0], kp1_array_int[:, 1]
             x2, y2 = kp2_array_int[:, 0], kp2_array_int[:, 1]
             mask = mask[y1, x1] & mask[y2, x2]
+            # mask = mask[y1, x1]
             mask = ~mask
             kp1_array = kp1_array[mask]
             kp2_array = kp2_array[mask]
