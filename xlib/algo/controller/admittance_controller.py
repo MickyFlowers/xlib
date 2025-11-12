@@ -43,13 +43,12 @@ class AdmittanceController(object):
         if x_dot is not None:
             self.x_dot = x_dot
         pose_error = calcPose6dError(x_exp, x)
-        pose_error = velTransform(pose_error, R.from_rotvec(x_exp[3:]).as_matrix())
+        pose_error = velTransform(pose_error, x_exp[3:])
         print("pose error", pose_error)
         x_ddot = np.linalg.inv(self.M) @ (f - self.D @ self.x_dot - self.K @ pose_error)
 
         self.x_dot += x_ddot * dt
-        x_rot = R.from_rotvec(x[3:]).as_matrix()
-        x_dot_in_tcp = velTransform(self.x_dot, np.linalg.inv(x_rot))
+        x_dot_in_tcp = velTransform(self.x_dot, x[3:])
         x = applyDeltaPose6d(x, x_dot_in_tcp * dt)
 
-        return x, self.x_dot
+        return x

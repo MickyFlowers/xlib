@@ -16,17 +16,16 @@ if __name__ == "__main__":
     threshold_high = np.array([8.0, 0.5])
     # threshold = np.array([5.0, 5.0, 5.0, 100, 100, 100])
     admittance_controller = AdmittanceController(M, D, K, threshold_high, threshold_low)
-    desired_tcp_pose = ur_robot.tcp_pose_vec
+    desired_tcp_pose = ur_robot.tcp_pose
     filter = MovingAverageFilter(window_size=30)
     while True:
         start_time = ur_robot.initPeriod()
         ft_value = ft_sensor.get_force_torque()
         # print("Raw Force Torque:", ft_value)
-        tcp_vel = ur_robot.tcp_velocity
-        cur_tcp_pose = ur_robot.tcp_pose_vec
-        ft_value = velTransform(ft_value, ur_robot.tcp_pose[:3, :3])
+        cur_tcp_pose = ur_robot.tcp_pose
+        ft_value = velTransform(ft_value, ur_robot.tcp_pose[3:])
         filter.update(ft_value)
-        ft_value = filter.data
+        ft_value = filter.output
         new_tcp_pose, x_dot = admittance_controller.update(
             cur_tcp_pose, desired_tcp_pose, 1.0 / ur_robot.frequency, None, ft_value
         )

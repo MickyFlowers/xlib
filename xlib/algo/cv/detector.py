@@ -1,9 +1,11 @@
-import numpy as np
+import logging
 from typing import Union
+
 import cv2
 import cv2.aruco as aruco
-from ..utils.transforms import vecToMatrix
-import logging
+import numpy as np
+
+from ..utils.transforms import vecCv2ToMatrix
 
 
 def generate_single_aruco(
@@ -39,12 +41,8 @@ def generate_aruco_board(
     )
 
     pixels_per_mm = 10
-    img_width = int(
-        (cols * marker_size + (cols - 1) * marker_separation) * pixels_per_mm
-    )
-    img_height = int(
-        (rows * marker_size + (rows - 1) * marker_separation) * pixels_per_mm
-    )
+    img_width = int((cols * marker_size + (cols - 1) * marker_separation) * pixels_per_mm)
+    img_height = int((rows * marker_size + (rows - 1) * marker_separation) * pixels_per_mm)
     img = board.generateImage((img_width, img_height), marginSize=50)
     font = cv2.FONT_HERSHEY_SIMPLEX
     text = f"6x6 ArUco Board (50 markers used) - Marker Size: {marker_size}mm"
@@ -62,9 +60,7 @@ def generate_aruco_board(
     return img
 
 
-def get_single_aruco_pose(
-    config: dict, img: np.ndarray, intrinsics_matrix, distortion, rvec=None, tvec=None
-):
+def get_single_aruco_pose(config: dict, img: np.ndarray, intrinsics_matrix, distortion, rvec=None, tvec=None):
     assert "aruco_type" in config
     assert "marker_size" in config
     assert "id" in config
@@ -127,7 +123,7 @@ def get_single_aruco_pose(
             )
 
             # Convert rotation vector and translation vector to matrix
-            return img_axes, vecToMatrix(rvec.squeeze(), tvec.squeeze())
+            return img_axes, vecCv2ToMatrix(rvec.squeeze(), tvec.squeeze())
         else:
             # No marker or multiple markers detected
             return img_markers, None
@@ -136,9 +132,7 @@ def get_single_aruco_pose(
         raise e
 
 
-def get_aruco_pose(
-    config: Union[list, dict], img: np.ndarray, intrinsics_matrix, distortion
-):
+def get_aruco_pose(config: Union[list, dict], img: np.ndarray, intrinsics_matrix, distortion):
     if isinstance(config, dict):
         assert all(
             [
@@ -159,9 +153,7 @@ def get_aruco_pose(
         aruco_dict = aruco.getPredefinedDictionary(aruco_type)
         aruco_params = aruco.DetectorParameters()
         detector = aruco.ArucoDetector(aruco_dict, aruco_params)
-        board = aruco.GridBoard(
-            config["num_markers"], marker_size, marker_seperation, aruco_dict
-        )
+        board = aruco.GridBoard(config["num_markers"], marker_size, marker_seperation, aruco_dict)
         try:
             corners, ids, rejected_markers = detector.detectMarkers(img)
             index = np.where(ids == config["ids"])[0]
@@ -191,7 +183,7 @@ def get_aruco_pose(
                     tvec,
                     0.1,
                 )
-                return img_axes, vecToMatrix(rvec.squeeze(), tvec.squeeze())
+                return img_axes, vecCv2ToMatrix(rvec.squeeze(), tvec.squeeze())
             else:
                 return img_markers, None
         except Exception as e:
@@ -258,28 +250,20 @@ def get_single_aruco_pose_high_precision(
 
         if not success:
             logging.warning("IPPE failed. Trying with default method.")
-            success, rvec, tvec = cv2.solvePnP(
-                objp, imgp, intrinsics_matrix, distortion
-            )
+            success, rvec, tvec = cv2.solvePnP(objp, imgp, intrinsics_matrix, distortion)
 
         if success:
             img_copy = img.copy()
-            img_markers = cv2.aruco.drawDetectedMarkers(
-                img_copy, [corners_subpix], np.array([[config["id"]]])
-            )
+            img_markers = cv2.aruco.drawDetectedMarkers(img_copy, [corners_subpix], np.array([[config["id"]]]))
 
             axis_length = marker_size / 2.0
-            img_axes = cv2.drawFrameAxes(
-                img_markers, intrinsics_matrix, distortion, rvec, tvec, axis_length
-            )
-            transform_matrix = vecToMatrix(rvec.squeeze(), tvec.squeeze())
+            img_axes = cv2.drawFrameAxes(img_markers, intrinsics_matrix, distortion, rvec, tvec, axis_length)
+            transform_matrix = vecCv2ToMatrix(rvec.squeeze(), tvec.squeeze())
             return img_axes, transform_matrix
         else:
             # PnP求解失败
             img_copy = img.copy()
-            img_markers = cv2.aruco.drawDetectedMarkers(
-                img_copy, [corners_subpix], np.array([[config["id"]]])
-            )
+            img_markers = cv2.aruco.drawDetectedMarkers(img_copy, [corners_subpix], np.array([[config["id"]]]))
             logging.warning("Failed to solve PnP for the detected marker.")
             return img_markers, None
 

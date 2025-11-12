@@ -1,10 +1,13 @@
 import collections
+
 import numpy as np
+
 
 class MovingAverageFilter:
     """
     A simple moving average filter class.
     """
+
     def __init__(self, window_size):
         """
         Initializes the moving average filter.
@@ -12,7 +15,7 @@ class MovingAverageFilter:
         """
         if not isinstance(window_size, int) or window_size <= 0:
             raise ValueError("Window size must be a positive integer.")
-        
+
         self.window_size = window_size
         self.data_window = collections.deque(maxlen=window_size)
 
@@ -37,7 +40,7 @@ class MovingAverageFilter:
         self.data_window.clear()
 
     @property
-    def data(self):
+    def output(self):
         """
         Returns the current average without adding a new value.
         Returns 0 (or a zero vector) if the window is empty.
@@ -47,3 +50,10 @@ class MovingAverageFilter:
             # For simplicity, we return 0, but this could be made more robust if needed.
             return None
         return np.mean(self.data_window, axis=0)
+
+    @property
+    def size(self):
+        """
+        Returns the current number of elements in the data window.
+        """
+        return len(self.data_window)
