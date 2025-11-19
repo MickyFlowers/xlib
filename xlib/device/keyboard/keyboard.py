@@ -19,4 +19,7 @@ class KeyboardReader:
             key = sys.stdin.read(1)
             return key == target_key
         return False
+    
+    def close(self):
+        self.restore()
 

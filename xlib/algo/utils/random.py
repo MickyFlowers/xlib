@@ -1,6 +1,7 @@
 import numpy as np
-from .transforms import calcNormVecFromPoint
 from scipy.spatial.transform import Rotation as R
+
+from .transforms import calcNormVecFromPoint, matrixToPose6d
 
 
 def sample_point_on_sphere(
@@ -73,13 +74,10 @@ def sample_cordinate_on_sphere(
     return trans_matrix
 
 
-def add_disturbance_to_pose(
-    pose: np.ndarray,
-    trans_lower: np.ndarray,
-    trans_upper: np.ndarray,
-    rot_lower: np.ndarray,
-    rot_upper: np.ndarray,
+def sample_disturbance(
+    lower: np.ndarray, upper: np.ndarray
 ) -> np.ndarray:
+
     """Add disturbance to the pose
     Args:
         pose (np.ndarray): pose matrix
@@ -88,17 +86,16 @@ def add_disturbance_to_pose(
         rot_lower (np.ndarray): lower bound of rotation disturbance, xyz euler angle
         rot_upper (np.ndarray): upper bound of rotation disturbance, xyz euler angle
     """
-    rot_matrix = pose[:3, :3]
+    rot_lower = lower[3:6]
+    rot_upper = upper[3:6]
+    trans_lower = lower[0:3]
+    trans_upper = upper[0:3]
     rot_disturbance = np.random.uniform(rot_lower, rot_upper)
     disturbance_rot_matrix = R.from_euler("xyz", rot_disturbance).as_matrix()
-    rot_matrix = rot_matrix @ disturbance_rot_matrix
-
-    trans_vector = pose[:3, 3]
     trans_disturbance = np.random.uniform(trans_lower, trans_upper)
-    trans_vector += trans_disturbance
 
     pose_disturbed = np.eye(4)
-    pose_disturbed[:3, :3] = rot_matrix
-    pose_disturbed[:3, 3] = trans_vector
+    pose_disturbed[:3, :3] = disturbance_rot_matrix
+    pose_disturbed[:3, 3] = trans_disturbance
 
-    return pose_disturbed
+    return matrixToPose6d(pose_disturbed)

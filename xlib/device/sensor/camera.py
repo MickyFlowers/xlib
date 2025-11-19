@@ -214,7 +214,7 @@ class RealSenseCamera(Camera):
         self.depth_img = depth_img
         return self.color_img, self.depth_img
 
-    def stop(self):
+    def close(self):
         self.pipeline.stop()
 
     def show(self):

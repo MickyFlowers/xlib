@@ -55,3 +55,7 @@ class Ft300sSensor:
         force = np.array([ft - ft_zero for ft, ft_zero in zip(self.get_force_torque_raw(), self.zero_force_torque)])
         
         return force
+
+    def close(self):
+        """close the serial port"""
+        self.__del__()

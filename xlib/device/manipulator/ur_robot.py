@@ -25,11 +25,12 @@ class UR(Manipulator):
     @property
     def tcp_pose(self) -> np.ndarray:
         pose_vec = self.rtde_r.getActualTCPPose()
-        return pose_vec
+        return np.array(pose_vec)
 
     @property
     def joint_position(self) -> np.ndarray:
-        return self.rtde_r.getActualQ()
+        jnt_vec = self.rtde_r.getActualQ()
+        return np.array(jnt_vec)
 
     @property
     def world_pose(self) -> np.ndarray:
@@ -37,7 +38,7 @@ class UR(Manipulator):
         trans_matrix = pose6dToMatrix(pose_vec)
         return matrixToPose6d(self.base_to_world_mtx @ trans_matrix)
 
-    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=300.0) -> None:
+    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=800.0) -> None:
         assert pose.shape == (6,)
         self.rtde_c.servoL(pose, 0.5, 0.5, dt, lookahead_time, gain)
 
@@ -65,7 +66,10 @@ class UR(Manipulator):
         self.rtde_c.stopJ(acc)
         self.rtde_c.speedStop(acc)
 
-    def disconnect(self) -> None:
+    def servoStop(self, acc=10.0) -> None:
+        self.rtde_c.servoStop(acc)
+        
+    def close(self) -> None:
         self.stop()
         self.rtde_c.stopScript()
         self.rtde_c.disconnect()
@@ -108,5 +112,3 @@ class UR(Manipulator):
     def waitPeriod(self, start_time):
         self.rtde_c.waitPeriod(start_time)
 
-    def __del__(self):
-        self.disconnect()

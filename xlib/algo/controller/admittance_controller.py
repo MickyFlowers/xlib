@@ -6,6 +6,17 @@ from ..utils.transforms import applyDeltaPose6d, calcPose6dError, velTransform
 
 class AdmittanceController(object):
     def __init__(self, M, D, K, threshold_high, threshold_low):
+        if not isinstance(M, np.ndarray):
+            M = np.array(M)
+            D = np.array(D)
+            K = np.array(K)
+            threshold_high = np.array(threshold_high)
+            threshold_low = np.array(threshold_low)
+        
+        if M.ndim == 1:
+            M = np.diag(M)
+            D = np.diag(D)
+            K = np.diag(K)
         self.M = M
         self.D = D
         self.K = K
@@ -14,6 +25,8 @@ class AdmittanceController(object):
         self.force_flag = False
         self.torque_flag = True
         self.x_dot = np.zeros(6)
+        self.x = np.zeros(6)
+        
 
     def update_params(self, M=None, D=None, K=None):
         if M is not None:
@@ -23,7 +36,7 @@ class AdmittanceController(object):
         if K is not None:
             self.K = K
 
-    def update(self, x, x_exp, dt, x_dot=None, f_ext=np.zeros(6)):
+    def update(self, dt, x_dot=None, f_ext=np.zeros(6)):
         f = np.zeros(6)
         force_norm = np.linalg.norm(f_ext[:3])
         torque_norm = np.linalg.norm(f_ext[3:])
@@ -42,13 +55,11 @@ class AdmittanceController(object):
 
         if x_dot is not None:
             self.x_dot = x_dot
-        pose_error = calcPose6dError(x_exp, x)
-        pose_error = velTransform(pose_error, x_exp[3:])
-        print("pose error", pose_error)
+        pose_error = calcPose6dError(np.zeros(6), self.x)
+        # print("pose error", pose_error)
         x_ddot = np.linalg.inv(self.M) @ (f - self.D @ self.x_dot - self.K @ pose_error)
 
         self.x_dot += x_ddot * dt
-        x_dot_in_tcp = velTransform(self.x_dot, x[3:])
-        x = applyDeltaPose6d(x, x_dot_in_tcp * dt)
+        self.x = applyDeltaPose6d(self.x, self.x_dot * dt)
 
-        return x
+        return self.x
