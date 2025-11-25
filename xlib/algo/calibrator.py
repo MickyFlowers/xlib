@@ -11,6 +11,7 @@ from ..device.sensor.camera import Camera
 from .utils.transforms import *
 from .utils.transforms import invPose6d
 
+
 class EyeHandCalibrator:
     def __init__(self, camera: Camera, robot: Manipulator) -> None:
         self._camera = camera
@@ -24,7 +25,9 @@ class EyeHandCalibrator:
         aruco_type=aruco.DICT_6X6_50,
         num_markers=(2, 2),
         marker_size=0.08,
+        # marker_size=0.028,
         marker_seperation=0.01,
+        # marker_seperation=0.004,
     ):
         logging.info("Setting aruco board")
         logging.info(f"aruco_type: {aruco_type}")
@@ -68,7 +71,7 @@ class EyeHandCalibrator:
         t_aruco2camera = np.array(
             [aruco2camera_pose[:3, 3] for aruco2camera_pose in aruco2camera_poses]
         )
-
+        
         R_camera2tcp, t_camera2tcp = cv2.calibrateHandEye(
             R_tcp2base,
             t_tcp2base,
