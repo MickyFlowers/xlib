@@ -144,13 +144,14 @@ class VelocityAdmittanceController(object):
     适用于速度控制接口的机器人。
     """
 
-    def __init__(self, M, D, threshold_high, threshold_low):
+    def __init__(self, M, D, threshold_high, threshold_low, vel_filter_alpha=0.8):
         """
         Args:
             M: 虚拟质量 [6,] 或 [6, 6]
             D: 虚拟阻尼 [6,] 或 [6, 6]
             threshold_high: 力激活阈值 [force, torque]
             threshold_low: 力死区阈值 [force, torque]
+            vel_filter_alpha: 速度反馈滤波系数 (0~1)，越大越信任测量值
         """
         if not isinstance(M, np.ndarray):
             M = np.array(M)
@@ -165,6 +166,7 @@ class VelocityAdmittanceController(object):
         self.D = D
         self.threshold_high = threshold_high
         self.threshold_low = threshold_low
+        self.vel_filter_alpha = vel_filter_alpha
         self.force_flag = False
         self.torque_flag = False
         self.x_dot = np.zeros(6)  # 导纳产生的速度偏移
@@ -198,23 +200,33 @@ class VelocityAdmittanceController(object):
             f[3:] = f_ext[3:] - self.threshold_low[1] * f_ext[3:] / torque_norm
         return f
 
-    def update(self, dt, target_vel, f_ext=None):
+    def update(self, dt, target_vel, tcp_vel, f_ext=None):
         """
-        基于速度的导纳控制更新
+        基于速度的导纳控制更新（带速度反馈）
 
         Args:
             dt: 时间步长
             target_vel: 目标速度 [vx, vy, vz, wx, wy, wz]（来自策略网络或遥操作）
+            tcp_vel: 当前TCP速度 [vx, vy, vz, wx, wy, wz]（本体反馈）
             f_ext: 外力 [fx, fy, fz, tx, ty, tz]
 
         Returns:
             output_vel: 导纳修正后的输出速度
+
+        Note:
+            target_vel, tcp_vel, f_ext 必须在同一坐标系下
         """
         if f_ext is None:
             f_ext = np.zeros(6)
 
         # 死区处理
         f = self._apply_deadzone(f_ext)
+
+        # 计算当前速度偏移的测量值：实际速度 - 目标速度
+        x_dot_measured = tcp_vel - target_vel
+
+        # 滤波融合：测量值与积分值
+        self.x_dot = self.vel_filter_alpha * x_dot_measured + (1 - self.vel_filter_alpha) * self.x_dot
 
         # 一阶导纳动力学（无K项，纯速度控制）: M·ẍ + D·ẋ = f
         # ẍ = M⁻¹·(f - D·ẋ)
@@ -228,15 +240,45 @@ class VelocityAdmittanceController(object):
 
         return output_vel
 
-    def update_no_target(self, dt, f_ext=None):
+    def update_no_feedback(self, dt, target_vel, f_ext=None):
+        """
+        无速度反馈的导纳控制（纯积分模式）
+
+        Args:
+            dt: 时间步长
+            target_vel: 目标速度 [vx, vy, vz, wx, wy, wz]
+            f_ext: 外力 [fx, fy, fz, tx, ty, tz]
+
+        Returns:
+            output_vel: 导纳修正后的输出速度
+        """
+        if f_ext is None:
+            f_ext = np.zeros(6)
+
+        # 死区处理
+        f = self._apply_deadzone(f_ext)
+
+        # 一阶导纳动力学: M·ẍ + D·ẋ = f
+        x_ddot = np.linalg.inv(self.M) @ (f - self.D @ self.x_dot)
+
+        # 积分得到速度偏移
+        self.x_dot += x_ddot * dt
+
+        # 输出速度 = 目标速度 + 导纳产生的速度偏移
+        output_vel = target_vel + self.x_dot
+
+        return output_vel
+
+    def update_no_target(self, dt, tcp_vel, f_ext=None):
         """
         纯导纳模式（无目标速度输入，仅根据力产生速度）
 
         Args:
             dt: 时间步长
+            tcp_vel: 当前TCP速度（本体反馈）
             f_ext: 外力 [fx, fy, fz, tx, ty, tz]
 
         Returns:
             output_vel: 导纳产生的速度
         """
-        return self.update(dt, np.zeros(6), f_ext)
+        return self.update(dt, np.zeros(6), tcp_vel, f_ext)
