@@ -4,7 +4,7 @@ from ..utils.transforms import applyDeltaPose6d, calcPose6dError
 
 
 class AdmittanceController(object):
-    def __init__(self, M, D, K, threshold_high, threshold_low, K_min_ratio=0.1):
+    def __init__(self, M, D, K, threshold_high, threshold_low, K_min_ratio=0.2):
         """
         Args:
             M, D, K: 导纳参数
@@ -68,27 +68,32 @@ class AdmittanceController(object):
             f[3:] = f_ext[3:] - self.threshold_low[1] * f_ext[3:] / torque_norm
         return f
 
-    def _compute_adaptive_K(self, f_ext):
-        """根据每个维度的力大小自适应调整对应维度的K，力越大K越小"""
+    def _compute_adaptive_K(self, f):
+        """根据每个维度的力大小自适应调整对应维度的K，力越大K越小
+
+        Args:
+            f: 死区处理后的力
+        """
         K_adaptive = self.K_base.copy()
 
-        force_max = self.threshold_high[0] * 5  # 力达到此值时K最小
-        torque_max = self.threshold_high[1] * 5
+        # 死区处理后，力从0开始，所以直接用力的大小来计算
+        force_max = self.threshold_high[0] * 4  # 力达到此值时K最小
+        torque_max = self.threshold_high[1] * 4
 
         # 对平移的3个维度 (x, y, z) 分别计算
         for i in range(3):
-            f_abs = np.abs(f_ext[i])
-            if f_abs > self.threshold_low[0]:
-                ratio = (f_abs - self.threshold_low[0]) / (force_max - self.threshold_low[0])
+            f_abs = np.abs(f[i])
+            if f_abs > 0:
+                ratio = f_abs / force_max
                 ratio = np.clip(ratio, 0.0, 1.0)
                 scale = 1.0 - ratio * (1.0 - self.K_min_ratio)
                 K_adaptive[i, i] *= scale
 
         # 对旋转的3个维度 (rx, ry, rz) 分别计算
         for i in range(3, 6):
-            t_abs = np.abs(f_ext[i])
-            if t_abs > self.threshold_low[1]:
-                ratio = (t_abs - self.threshold_low[1]) / (torque_max - self.threshold_low[1])
+            t_abs = np.abs(f[i])
+            if t_abs > 0:
+                ratio = t_abs / torque_max
                 ratio = np.clip(ratio, 0.0, 1.0)
                 scale = 1.0 - ratio * (1.0 - self.K_min_ratio)
                 K_adaptive[i, i] *= scale
@@ -103,8 +108,8 @@ class AdmittanceController(object):
         # 死区处理
         f = self._apply_deadzone(f_ext)
 
-        # 自适应K：每个维度根据对应方向的力单独调整
-        self.K = self._compute_adaptive_K(f_ext)
+        # 自适应K：每个维度根据死区处理后的力单独调整
+        self.K = self._compute_adaptive_K(f)
 
         # 计算当前TCP相对于目标位姿的偏移量 (在target坐标系下)
         # x = tcp_pose - target_pose (位姿误差)
