@@ -135,3 +135,108 @@ class AdmittanceController(object):
         new_target_pose = applyDeltaPose6d(target_pose, self.x)
 
         return new_target_pose
+
+
+class VelocityAdmittanceController(object):
+    """基于速度输出的导纳控制器
+
+    输入目标速度，输出经过导纳修正后的速度。
+    适用于速度控制接口的机器人。
+    """
+
+    def __init__(self, M, D, threshold_high, threshold_low):
+        """
+        Args:
+            M: 虚拟质量 [6,] 或 [6, 6]
+            D: 虚拟阻尼 [6,] 或 [6, 6]
+            threshold_high: 力激活阈值 [force, torque]
+            threshold_low: 力死区阈值 [force, torque]
+        """
+        if not isinstance(M, np.ndarray):
+            M = np.array(M)
+            D = np.array(D)
+            threshold_high = np.array(threshold_high)
+            threshold_low = np.array(threshold_low)
+
+        if M.ndim == 1:
+            M = np.diag(M)
+            D = np.diag(D)
+        self.M = M
+        self.D = D
+        self.threshold_high = threshold_high
+        self.threshold_low = threshold_low
+        self.force_flag = False
+        self.torque_flag = False
+        self.x_dot = np.zeros(6)  # 导纳产生的速度偏移
+
+    def reset(self):
+        self.force_flag = False
+        self.torque_flag = False
+        self.x_dot = np.zeros(6)
+
+    def update_params(self, M=None, D=None):
+        if M is not None:
+            self.M = M
+        if D is not None:
+            self.D = D
+
+    def _apply_deadzone(self, f_ext):
+        f = np.zeros(6)
+        force_norm = np.linalg.norm(f_ext[:3])
+        torque_norm = np.linalg.norm(f_ext[3:])
+        if force_norm > self.threshold_high[0]:
+            self.force_flag = True
+        if force_norm < self.threshold_low[0]:
+            self.force_flag = False
+        if torque_norm > self.threshold_high[1]:
+            self.torque_flag = True
+        if torque_norm < self.threshold_low[1]:
+            self.torque_flag = False
+        if self.force_flag and force_norm > 0:
+            f[:3] = f_ext[:3] - self.threshold_low[0] * f_ext[:3] / force_norm
+        if self.torque_flag and torque_norm > 0:
+            f[3:] = f_ext[3:] - self.threshold_low[1] * f_ext[3:] / torque_norm
+        return f
+
+    def update(self, dt, target_vel, f_ext=None):
+        """
+        基于速度的导纳控制更新
+
+        Args:
+            dt: 时间步长
+            target_vel: 目标速度 [vx, vy, vz, wx, wy, wz]（来自策略网络或遥操作）
+            f_ext: 外力 [fx, fy, fz, tx, ty, tz]
+
+        Returns:
+            output_vel: 导纳修正后的输出速度
+        """
+        if f_ext is None:
+            f_ext = np.zeros(6)
+
+        # 死区处理
+        f = self._apply_deadzone(f_ext)
+
+        # 一阶导纳动力学（无K项，纯速度控制）: M·ẍ + D·ẋ = f
+        # ẍ = M⁻¹·(f - D·ẋ)
+        x_ddot = np.linalg.inv(self.M) @ (f - self.D @ self.x_dot)
+
+        # 积分得到速度偏移
+        self.x_dot += x_ddot * dt
+
+        # 输出速度 = 目标速度 + 导纳产生的速度偏移
+        output_vel = target_vel + self.x_dot
+
+        return output_vel
+
+    def update_no_target(self, dt, f_ext=None):
+        """
+        纯导纳模式（无目标速度输入，仅根据力产生速度）
+
+        Args:
+            dt: 时间步长
+            f_ext: 外力 [fx, fy, fz, tx, ty, tz]
+
+        Returns:
+            output_vel: 导纳产生的速度
+        """
+        return self.update(dt, np.zeros(6), f_ext)

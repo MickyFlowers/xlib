@@ -1,1 +1,1 @@
-from .admittance_controller import AdmittanceController
+from .admittance_controller import AdmittanceController, VelocityAdmittanceController

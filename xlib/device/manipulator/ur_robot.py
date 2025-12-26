@@ -110,6 +110,9 @@ class UR(Manipulator):
         vel_in_base = self._vel_world_to_base(vel_in_world)
         self.rtde_c.speedL(vel_in_base, acc, time)
 
+    def speedStop(self, acc=10.0) -> None:
+        """停止线速度"""
+        self.rtde_c.speedStop(acc)
     def stop(self, acc=10.0) -> None:
         """停止所有运动"""
         self.rtde_c.stopL(acc)
