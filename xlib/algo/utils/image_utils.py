@@ -3,6 +3,7 @@ import io
 import numpy as np
 from moviepy.editor import ImageSequenceClip
 from PIL import Image
+import os
 
 
 def pil_image_to_np_buffer(img_pil: Image.Image, format: str = "PNG") -> np.ndarray:
@@ -31,5 +32,6 @@ def bytes_to_cv2_image(img_bytes: bytes) -> np.ndarray:
     return np.array(img_pil)
 
 def save_video(output_path, frames, fps=30, codec="libx264"):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     clip = ImageSequenceClip(frames, fps=fps)
     clip.write_videofile(output_path, codec=codec)

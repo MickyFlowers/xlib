@@ -13,12 +13,12 @@ class KeyboardReader:
     def restore(self):
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
 
-    def is_pressed(self, target_key):
+    def get_key(self):
         dr, _, _ = select.select([sys.stdin], [], [], 0)
         if dr:
             key = sys.stdin.read(1)
-            return key == target_key
-        return False
+            return key
+        return None
     
     def close(self):
         self.restore()

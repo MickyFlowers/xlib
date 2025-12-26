@@ -1,13 +1,11 @@
-import io
+
 import json
 import multiprocessing as mp
 import os
-from collections import defaultdict
 
 import h5py
 import numpy as np
-from PIL import Image
-
+import glob
 
 def list_of_dicts_to_dict_of_lists(data_list):
     def merge_dicts(acc, d):
@@ -63,31 +61,60 @@ def save_dict_to_hdf5(h5group, data):
 
 
 class HDF5Saver(mp.Process):
-    def __init__(self, dir_path):
+    def __init__(self, dir_path, idx=0):
         super().__init__()
         self.queue = mp.Queue()
         self.dir_path = dir_path
+        
         self.stop_flag = mp.Event()
         self.buffer = []
+        files = glob.glob(os.path.join(dir_path, "*.hdf5"))
+        if files:
+            self.idx = len(files)
+        else:
+            self.idx = idx
 
     def add_frame(self, data):
         self.buffer.append(data)
 
     def save_episode(self):
-        self.queue.put(self.buffer)
-        self.buffer = []
+        if len(self.buffer) != 0:
+            self.queue.put(self.buffer)
+            self.buffer = []
 
     def run(self):
         os.makedirs(self.dir_path, exist_ok=True)
-        idx = 0
         while not self.stop_flag.is_set() or not self.queue.empty():
             try:
                 data = self.queue.get(timeout=0.1)
             except:
                 continue
-            with h5py.File(os.path.join(self.dir_path, str(idx) + ".hdf5"), "w") as f:
+            
+            with h5py.File(os.path.join(self.dir_path, str(self.idx) + ".hdf5"), "w") as f:
                 save_episode(f, data)
-                idx += 1
+                self.idx += 1
 
     def stop(self):
         self.stop_flag.set()
+
+class HDF5BlockSaver:
+    def __init__(self, dir_path, idx=0):
+        self.dir_path = dir_path
+        self.buffer = []
+        files = glob.glob(os.path.join(dir_path, "*.hdf5"))
+        if files:
+            self.idx = len(files)
+        else:
+            self.idx = idx
+
+    def add_frame(self, data):
+        self.buffer.append(data)
+
+    def save_episode(self):
+        if len(self.buffer) == 0:
+            return
+        os.makedirs(self.dir_path, exist_ok=True)
+        with h5py.File(os.path.join(self.dir_path, str(self.idx) + ".hdf5"), "w") as f:
+            save_episode(f, self.buffer)
+            self.idx += 1
+        self.buffer = []

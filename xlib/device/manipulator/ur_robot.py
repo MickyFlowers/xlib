@@ -15,7 +15,12 @@ class UR(Manipulator):
         self.base_to_world_mtx = pose6dToMatrix(self.base_to_world)
         self.rtde_c = rtde_control.RTDEControlInterface(ip)
         self.rtde_r = rtde_receive.RTDEReceiveInterface(ip)
-        self.frequency = 125  # Hz
+        self.frequency = 125  # 
+        self._init()
+    
+    def _init(self):
+        self.servo_target_tcp = self.tcp_pose
+        self.servo_target_world_tcp = self.world_pose
 
     @property
     def tcp_velocity(self) -> np.ndarray:
@@ -37,11 +42,48 @@ class UR(Manipulator):
         pose_vec = self.rtde_r.getActualTCPPose()
         trans_matrix = pose6dToMatrix(pose_vec)
         return matrixToPose6d(self.base_to_world_mtx @ trans_matrix)
+    
+    @property
+    def target_pose(self) -> np.ndarray:
+        pose_vec = self.rtde_r.getTargetTCPPose()
+        return np.array(pose_vec)   
+    
+    @property
+    def world_target_pose(self) -> np.ndarray:
+        pose_vec = self.rtde_r.getTargetTCPPose()
+        trans_matrix = pose6dToMatrix(pose_vec)
+        return matrixToPose6d(self.base_to_world_mtx @ trans_matrix)
+    
+    def reset_servo_target_tcp(self) -> None:
+        self.servo_target_tcp = self.tcp_pose
+        self.servo_target_world_tcp = self.world_pose
 
-    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=800.0) -> None:
+        
+    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=800.0, max_pos_vel=0.1, max_rot_vel=0.5) -> None:
         assert pose.shape == (6,)
-        self.rtde_c.servoL(pose, 0.5, 0.5, dt, lookahead_time, gain)
-
+        delta_pose = calcPose6dError(self.servo_target_tcp, pose)
+        vel = delta_pose / dt
+        if np.linalg.norm(vel[:3]) > max_pos_vel:
+            vel[:3] = vel[:3] / np.linalg.norm(vel[:3]) * max_pos_vel
+        if np.linalg.norm(vel[3:]) > max_rot_vel:
+            vel[3:] = vel[3:] / np.linalg.norm(vel[3:]) * max_rot_vel
+        self.servo_target_tcp = applyDeltaPose6d(self.servo_target_tcp, vel * dt)
+        self.rtde_c.servoL(self.servo_target_tcp, 0.5, 0.5, dt, lookahead_time, gain)
+    
+    def servoWorldTcp(self, pose, dt, lookahead_time=0.1, gain=800.0, max_pos_vel=0.1, max_rot_vel=0.5):
+        assert pose.shape == (6,)
+        delta_pose = calcPose6dError(self.servo_target_world_tcp, pose)
+        vel = delta_pose / dt
+        if np.linalg.norm(vel[:3]) > max_pos_vel:
+            vel[:3] = vel[:3] / np.linalg.norm(vel[:3]) * max_pos_vel
+        if np.linalg.norm(vel[3:]) > max_rot_vel:
+            vel[3:] = vel[3:] / np.linalg.norm(vel[3:]) * max_rot_vel
+        self.servo_target_world_tcp = applyDeltaPose6d(self.servo_target_world_tcp, vel * dt)
+        world_pose = np.linalg.inv(self.base_to_world_mtx) @ pose6dToMatrix(self.servo_target_world_tcp)
+        world_pose = matrixToPose6d(world_pose)
+        self.rtde_c.servoL(world_pose, 0.5, 0.5, dt, lookahead_time, gain)
+    
+    
     def servoJoint(self, q, dt, vel=0.5, acc=0.5, lookahead_time=0.1, gain=300.0) -> None:
         self.rtde_c.servoJ(q, vel, acc, dt, lookahead_time, gain)
 
