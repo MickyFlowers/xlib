@@ -10,147 +10,133 @@ from .manipulator_base import Manipulator
 
 
 class UR(Manipulator):
-    def __init__(self, ip: str, base_to_world: np.ndarray = np.zeros(6)) -> None:
-        self.base_to_world = base_to_world
-        self.base_to_world_mtx = pose6dToMatrix(self.base_to_world)
+    def __init__(self, ip: str, base_in_world: np.ndarray = np.zeros(6)) -> None:
+        self._base_in_world = base_in_world
+        self._base_in_world_mtx = pose6dToMatrix(self._base_in_world)
+        self._world_in_base_mtx = np.linalg.inv(self._base_in_world_mtx)
+        self._world_in_base = matrixToPose6d(self._world_in_base_mtx)
         self.rtde_c = rtde_control.RTDEControlInterface(ip)
         self.rtde_r = rtde_receive.RTDEReceiveInterface(ip)
-        self.frequency = 125  # 
+        self.frequency = 125
         self._init()
-    
-    def _init(self):
-        self.servo_target_tcp = self.tcp_pose
-        self.servo_target_world_tcp = self.world_pose
 
-    @property
-    def tcp_velocity(self) -> np.ndarray:
-        vel_vec = self.rtde_r.getActualTCPSpeed()
-        return np.array(vel_vec)
+    def _init(self):
+        self._servo_target_pose = self.tcp_pose
+
+    def _pose_base_to_world(self, pose_in_base: np.ndarray) -> np.ndarray:
+        """将base坐标系下的位姿转换到world坐标系"""
+        pose_mtx = pose6dToMatrix(pose_in_base)
+        return matrixToPose6d(self._base_in_world_mtx @ pose_mtx)
+
+    def _pose_world_to_base(self, pose_in_world: np.ndarray) -> np.ndarray:
+        """将world坐标系下的位姿转换到base坐标系"""
+        pose_mtx = pose6dToMatrix(pose_in_world)
+        return matrixToPose6d(self._world_in_base_mtx @ pose_mtx)
+
+    def _vel_base_to_world(self, vel_in_base: np.ndarray) -> np.ndarray:
+        """将base坐标系下的速度转换到world坐标系"""
+        return velTransform(vel_in_base, self._base_in_world[3:])
+
+    def _vel_world_to_base(self, vel_in_world: np.ndarray) -> np.ndarray:
+        """将world坐标系下的速度转换到base坐标系"""
+        return velTransform(vel_in_world, self._world_in_base[3:])
 
     @property
     def tcp_pose(self) -> np.ndarray:
-        pose_vec = self.rtde_r.getActualTCPPose()
-        return np.array(pose_vec)
+        """TCP位姿 (world坐标系下)"""
+        pose_in_base = self.rtde_r.getActualTCPPose()
+        return self._pose_base_to_world(np.array(pose_in_base))
+
+    @property
+    def tcp_velocity(self) -> np.ndarray:
+        """TCP速度 (world坐标系下)"""
+        vel_in_base = self.rtde_r.getActualTCPSpeed()
+        return self._vel_base_to_world(np.array(vel_in_base))
+
+    @property
+    def tcp_velocity_in_tcp(self) -> np.ndarray:
+        """TCP速度 (TCP坐标系下)"""
+        vel_in_base = self.rtde_r.getActualTCPSpeed()
+        pose_in_base = self.rtde_r.getActualTCPPose()
+        tcp_in_base = pose_in_base[3:]
+        base_in_tcp = R.from_rotvec(tcp_in_base).inv().as_rotvec()
+        return velTransform(np.array(vel_in_base), base_in_tcp)
 
     @property
     def joint_position(self) -> np.ndarray:
-        jnt_vec = self.rtde_r.getActualQ()
-        return np.array(jnt_vec)
+        """关节角度"""
+        return np.array(self.rtde_r.getActualQ())
 
-    @property
-    def world_pose(self) -> np.ndarray:
-        pose_vec = self.rtde_r.getActualTCPPose()
-        trans_matrix = pose6dToMatrix(pose_vec)
-        return matrixToPose6d(self.base_to_world_mtx @ trans_matrix)
-    
     @property
     def target_pose(self) -> np.ndarray:
-        pose_vec = self.rtde_r.getTargetTCPPose()
-        return np.array(pose_vec)   
-    
-    @property
-    def world_target_pose(self) -> np.ndarray:
-        pose_vec = self.rtde_r.getTargetTCPPose()
-        trans_matrix = pose6dToMatrix(pose_vec)
-        return matrixToPose6d(self.base_to_world_mtx @ trans_matrix)
-    
-    def reset_servo_target_tcp(self) -> None:
-        self.servo_target_tcp = self.tcp_pose
-        self.servo_target_world_tcp = self.world_pose
+        """目标TCP位姿 (world坐标系下)"""
+        pose_in_base = self.rtde_r.getTargetTCPPose()
+        return self._pose_base_to_world(np.array(pose_in_base))
 
-        
-    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=800.0, max_pos_vel=0.1, max_rot_vel=0.5) -> None:
+    def reset_servo_target(self) -> None:
+        """重置servo目标为当前位姿"""
+        self._servo_target_pose = self.tcp_pose
+
+    def servoTcp(self, pose, dt, lookahead_time=0.1, gain=1500.0, max_pos_vel=0.1, max_rot_vel=0.5) -> None:
+        """伺服到目标位姿 (world坐标系下)"""
         assert pose.shape == (6,)
-        delta_pose = calcPose6dError(self.servo_target_tcp, pose)
+        delta_pose = calcPose6dError(self._servo_target_pose, pose)
         vel = delta_pose / dt
         if np.linalg.norm(vel[:3]) > max_pos_vel:
             vel[:3] = vel[:3] / np.linalg.norm(vel[:3]) * max_pos_vel
         if np.linalg.norm(vel[3:]) > max_rot_vel:
             vel[3:] = vel[3:] / np.linalg.norm(vel[3:]) * max_rot_vel
-        self.servo_target_tcp = applyDeltaPose6d(self.servo_target_tcp, vel * dt)
-        self.rtde_c.servoL(self.servo_target_tcp, 0.5, 0.5, dt, lookahead_time, gain)
-    
-    def servoWorldTcp(self, pose, dt, lookahead_time=0.1, gain=800.0, max_pos_vel=0.1, max_rot_vel=0.5):
-        assert pose.shape == (6,)
-        delta_pose = calcPose6dError(self.servo_target_world_tcp, pose)
-        vel = delta_pose / dt
-        if np.linalg.norm(vel[:3]) > max_pos_vel:
-            vel[:3] = vel[:3] / np.linalg.norm(vel[:3]) * max_pos_vel
-        if np.linalg.norm(vel[3:]) > max_rot_vel:
-            vel[3:] = vel[3:] / np.linalg.norm(vel[3:]) * max_rot_vel
-        self.servo_target_world_tcp = applyDeltaPose6d(self.servo_target_world_tcp, vel * dt)
-        world_pose = np.linalg.inv(self.base_to_world_mtx) @ pose6dToMatrix(self.servo_target_world_tcp)
-        world_pose = matrixToPose6d(world_pose)
-        self.rtde_c.servoL(world_pose, 0.5, 0.5, dt, lookahead_time, gain)
-    
-    
+        self._servo_target_pose = applyDeltaPose6d(self._servo_target_pose, vel * dt)
+        pose_in_base = self._pose_world_to_base(self._servo_target_pose)
+        self.rtde_c.servoL(pose_in_base, 0.5, 0.5, dt, lookahead_time, gain)
+
     def servoJoint(self, q, dt, vel=0.5, acc=0.5, lookahead_time=0.1, gain=300.0) -> None:
+        """伺服到目标关节角度"""
         self.rtde_c.servoJ(q, vel, acc, dt, lookahead_time, gain)
 
     def moveJoint(self, q, vel=1.0, acc=1.0, asynchronous=False):
+        """移动到目标关节角度"""
         self.rtde_c.moveJ(q, vel, acc, asynchronous)
 
-    def applyTcpVel(self, tcp_vel: np.ndarray, acc=1.0, time=0.0) -> None:
-        pose_vec = self.rtde_r.getActualTCPPose()
-        base_vel = velTransform(tcp_vel, pose_vec[3:])
-        self.rtde_c.speedL(base_vel, acc, time)
+    def applyTcpVel(self, vel_in_tcp: np.ndarray, acc=1.0, time=0.0) -> None:
+        """施加TCP坐标系下的速度"""
+        pose_in_base = self.rtde_r.getActualTCPPose()
+        tcp_in_base = pose_in_base[3:]
+        vel_in_base = velTransform(vel_in_tcp, tcp_in_base)
+        self.rtde_c.speedL(vel_in_base, acc, time)
 
-    def applyVel(self, vel: np.ndarray, acc=1.0, time=0.0) -> None:
-        self.rtde_c.speedL(vel, acc, time)
-
-    def applyWorldVel(self, world_vel: np.ndarray, acc=1.0, time=0.0) -> None:
-        rot_vec = invPose6d(self.base_to_world)[3:]
-        world_vel = velTransform(world_vel, rot_vec)
-        self.rtde_c.speedL(world_vel, acc, time)
+    def applyVel(self, vel_in_world: np.ndarray, acc=1.0, time=0.0) -> None:
+        """施加world坐标系下的速度"""
+        vel_in_base = self._vel_world_to_base(vel_in_world)
+        self.rtde_c.speedL(vel_in_base, acc, time)
 
     def stop(self, acc=10.0) -> None:
+        """停止所有运动"""
         self.rtde_c.stopL(acc)
         self.rtde_c.stopJ(acc)
         self.rtde_c.speedStop(acc)
 
     def servoStop(self, acc=10.0) -> None:
+        """停止伺服运动"""
         self.rtde_c.servoStop(acc)
-        
+
     def close(self) -> None:
+        """关闭连接"""
         self.stop()
         self.rtde_c.stopScript()
         self.rtde_c.disconnect()
         self.rtde_r.disconnect()
 
-    def moveToPose(self, pose, vel=0.25, acc=1.2, asynchronous=False):
-        assert pose.shape == (6,)
-        self.rtde_c.moveL(pose, vel, acc, asynchronous)
-
-    def moveToWorldPose(self, pose, vel=0.25, acc=1.2, asynchronous=False):
-        world_pose = np.linalg.inv(self.base_to_world_mtx) @ pose6dToMatrix(pose)
-        world_pose = matrixToPose6d(world_pose)
-        self.moveToPose(world_pose, vel, acc, asynchronous)
-
-    def moveToWorldErrorPose(self, pose, jnt_error, vel=0.25, acc=1.2, asynchronous=False):
-        assert pose.shape == (6,), "Input pose should be 6D pose vector"
-        world_pose_matrix = pose6dToMatrix(pose)
-        tcp_pose = np.linalg.inv(self.base_to_world_mtx) @ world_pose_matrix
-        # self.moveToPose(tcp_pose, vel, acc, False)
-        # time.sleep(0.2)
-        # q = self.rtde_r.getActualQ()
-        # q += jnt_error
-        # self.rtde_c.moveJ(q, vel, acc, asynchronous)
-        pose_vec = matrixToPose6d(tcp_pose)
-        if not self.rtde_c.getInverseKinematicsHasSolution(pose_vec):
-            return False
-        q = self.rtde_c.getInverseKinematics(pose_vec)
-        q_cur = self.rtde_r.getActualQ()
-        if np.abs(np.array(q[:3]) - np.array(q_cur[:3])).max() > np.pi / 3 or q[2] > 0:
-            return False
-        else:
-            q += jnt_error
-            self.rtde_c.moveJ(q, vel, acc, asynchronous)
-            return True
+    def moveToPose(self, pose_in_world, vel=0.25, acc=1.2, asynchronous=False):
+        """移动到目标位姿 (world坐标系下)"""
+        assert pose_in_world.shape == (6,)
+        pose_in_base = self._pose_world_to_base(pose_in_world)
+        self.rtde_c.moveL(pose_in_base, vel, acc, asynchronous)
 
     def initPeriod(self):
-        start_time = self.rtde_c.initPeriod()
-        return start_time
+        """初始化周期计时"""
+        return self.rtde_c.initPeriod()
 
     def waitPeriod(self, start_time):
+        """等待周期结束"""
         self.rtde_c.waitPeriod(start_time)
-
