@@ -4,13 +4,14 @@ from ..utils.transforms import applyDeltaPose6d, calcPose6dError
 
 
 class AdmittanceController(object):
-    def __init__(self, M, D, K, threshold_high, threshold_low, K_min_ratio=0.2):
+    def __init__(self, M, D, K, threshold_high, threshold_low, K_min_ratio=0.2, K_filter_alpha=0.05):
         """
         Args:
             M, D, K: 导纳参数
             threshold_high: 力激活阈值 [force, torque]
             threshold_low: 力死区阈值 [force, torque]
             K_min_ratio: 接触时K的最小比例 (0~1)，用于自适应刚度
+            K_filter_alpha: K值滤波系数 (0~1)，越小越平滑，越大响应越快
         """
         if not isinstance(M, np.ndarray):
             M = np.array(M)
@@ -28,6 +29,7 @@ class AdmittanceController(object):
         self.K = K
         self.K_base = K.copy()
         self.K_min_ratio = K_min_ratio
+        self.K_filter_alpha = K_filter_alpha
         self.threshold_high = threshold_high
         self.threshold_low = threshold_low
         self.force_flag = False
@@ -108,8 +110,9 @@ class AdmittanceController(object):
         # 死区处理
         f = self._apply_deadzone(f_ext)
 
-        # 自适应K：每个维度根据死区处理后的力单独调整
-        self.K = self._compute_adaptive_K(f)
+        # 自适应K：每个维度根据死区处理后的力单独调整，并进行低通滤波平滑
+        K_target = self._compute_adaptive_K(f)
+        self.K = self.K_filter_alpha * K_target + (1 - self.K_filter_alpha) * self.K
 
         # 计算当前TCP相对于目标位姿的偏移量 (在target坐标系下)
         # x = tcp_pose - target_pose (位姿误差)
