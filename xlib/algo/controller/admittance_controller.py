@@ -79,8 +79,8 @@ class AdmittanceController(object):
         K_adaptive = self.K_base.copy()
 
         # 死区处理后，力从0开始，所以直接用力的大小来计算
-        force_max = self.threshold_high[0] * 4  # 力达到此值时K最小
-        torque_max = self.threshold_high[1] * 4
+        force_max = self.threshold_high[0] * 3  # 力达到此值时K最小
+        torque_max = self.threshold_high[1] * 3
 
         # 对平移的3个维度 (x, y, z) 分别计算
         for i in range(3):
