@@ -1,6 +1,6 @@
 import cv2
-import cv2
 import numpy as np
+
 from ...device.sensor.camera import Camera
 from ..RoMa.romatch import *
 
@@ -11,9 +11,7 @@ class RomaMatchAlgo:
         self.model = eval(model_type)(device=device)
         self.device = device
 
-    def match(
-        self, img1: np.ndarray, img2: np.ndarray, mask=None, ransac=True, camera=None
-    ):
+    def match(self, img1: np.ndarray, img2: np.ndarray, mask=None, ransac=True, camera=None, origin_image=None):
         assert img1 is not None, "Color Image 1 not provided"
         assert img2 is not None, "Color Image 2 not provided"
         h1, w1 = img1.shape[:2]
@@ -40,12 +38,8 @@ class RomaMatchAlgo:
             kptsB_array = kptsB_array[ransac_mask].reshape(-1, 2)
 
         if mask is not None:
-            kptsA_array_int = np.clip(
-                kptsA_array.round().astype(int), [0, 0], [w1 - 1, h1 - 1]
-            )
-            kptsB_array_int = np.clip(
-                kptsB_array.round().astype(int), [0, 0], [w2 - 1, h2 - 1]
-            )
+            kptsA_array_int = np.clip(kptsA_array.round().astype(int), [0, 0], [w1 - 1, h1 - 1])
+            kptsB_array_int = np.clip(kptsB_array.round().astype(int), [0, 0], [w2 - 1, h2 - 1])
 
             x1, y1 = kptsA_array_int[:, 0], kptsA_array_int[:, 1]
             x2, y2 = kptsB_array_int[:, 0], kptsB_array_int[:, 1]
@@ -60,7 +54,7 @@ class RomaMatchAlgo:
             samples = np.random.choice(kptsA_array.shape[0], 200, replace=False)
             kptsA_array = kptsA_array[samples]
             kptsB_array = kptsB_array[samples]
-        match_img = self._draw_matches(img1, kptsA_array, img2, kptsB_array)
+        match_img = self._draw_matches(img1, kptsA_array, origin_image, kptsB_array)
         return kptsA_array, kptsB_array, match_img
 
     def _draw_matches(self, img1, keypoints1, img2, keypoints2):
@@ -113,6 +107,7 @@ class KpMatchAlgo:
         mask=None,
         ransac: bool = True,
         camera: Camera = None,
+        origin_image=None,
     ):
         assert img1 is not None, "Color Image 1 not provided"
         assert img2 is not None, "Color Image 2 not provided"
@@ -166,7 +161,7 @@ class KpMatchAlgo:
         match_img = cv2.drawMatchesKnn(
             img1,
             kp1,
-            img2,
+            origin_image,
             kp2,
             good_matches,
             None,

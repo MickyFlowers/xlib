@@ -293,16 +293,40 @@ class EyeHandCalibrator:
         return float(np.mean(np.linalg.norm(proj - imgp, axis=1)))
 
     def _hand_eye_errors(self, tcp_poses, aruco2camera_poses, camera2tcp_pose):
-        trans_err = []
-        rot_err = []
-        for tcp_pose, aruco_pose in zip(tcp_poses, aruco2camera_poses):
-            left = tcp_pose @ camera2tcp_pose
-            right = camera2tcp_pose @ aruco_pose
-            delta = np.linalg.inv(left) @ right
-            rot_vec, _ = cv2.Rodrigues(delta[:3, :3])
-            rot_err.append(np.linalg.norm(rot_vec))
-            trans_err.append(np.linalg.norm(delta[:3, 3]))
-        return np.array(trans_err), np.array(rot_err)
+        n = len(tcp_poses)
+        if n == 0:
+            return np.array([]), np.array([])
+        if n == 1:
+            return np.zeros(1), np.zeros(1)
+
+        # Use relative motions A_ij, B_ij to compute per-sample residuals.
+        # A_ij = inv(T_tcp_i) @ T_tcp_j
+        # B_ij = T_aruco_i @ inv(T_aruco_j)
+        # Residual: inv(A_ij @ X) @ (X @ B_ij)
+        per_sample_trans = []
+        per_sample_rot = []
+        for i in range(n):
+            trans_i = []
+            rot_i = []
+            tcp_i = tcp_poses[i]
+            aruco_i = aruco2camera_poses[i]
+            tcp_i_inv = np.linalg.inv(tcp_i)
+            for j in range(n):
+                if i == j:
+                    continue
+                tcp_j = tcp_poses[j]
+                aruco_j = aruco2camera_poses[j]
+                A_ij = tcp_i_inv @ tcp_j
+                B_ij = aruco_i @ np.linalg.inv(aruco_j)
+                left = A_ij @ camera2tcp_pose
+                right = camera2tcp_pose @ B_ij
+                delta = np.linalg.inv(left) @ right
+                rot_vec, _ = cv2.Rodrigues(delta[:3, :3])
+                rot_i.append(float(np.linalg.norm(rot_vec)))
+                trans_i.append(float(np.linalg.norm(delta[:3, 3])))
+            per_sample_trans.append(float(np.median(trans_i)))
+            per_sample_rot.append(float(np.median(rot_i)))
+        return np.array(per_sample_trans), np.array(per_sample_rot)
 
     def _robust_threshold(self, values, sigma):
         if len(values) < 5:

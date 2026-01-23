@@ -28,8 +28,10 @@ class Ft300sSensor:
             self.ser.read_until(self.STARTBYTES)
 
         self.zero_force_torque = [0, 0, 0, 0, 0, 0]
+        self.cur_force_torque = [0, 0, 0, 0, 0, 0]
         if zero_reset:
             self.zero_force_torque = self.get_force_torque_raw()
+            self.cur_force_torque = self.zero_force_torque
 
     def __del__(self):
         for i in range(50):
@@ -48,11 +50,12 @@ class Ft300sSensor:
 
     def reset_zero_force_torque(self):
         """reset zero force torque values with current force torque"""
-        self.zero_force_torque = self.get_force_torque_raw()
+        self.zero_force_torque = self.cur_force_torque
 
     def get_force_torque(self):
         """get force and torque value based on zero reset ft"""
-        force = np.array([ft - ft_zero for ft, ft_zero in zip(self.get_force_torque_raw(), self.zero_force_torque)])
+        self.cur_force_torque = self.get_force_torque_raw()
+        force = np.array([ft - ft_zero for ft, ft_zero in zip(self.cur_force_torque, self.zero_force_torque)])
         
         return force
 

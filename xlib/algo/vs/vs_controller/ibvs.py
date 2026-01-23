@@ -1,13 +1,15 @@
-from .. import kp_matcher
-from ....device.sensor.camera import Camera
-import numpy as np
-from ...utils import metric
-import cv2
 import copy
-from .vs_controller_base import VisualServoControllerBase
-from .cnsv2_simple_cilent import SimpleClient
-from .CNS.cns.utils.perception import CameraIntrinsic
+
+import cv2
+import numpy as np
+
+from ....device.sensor.camera import Camera
+from ...utils import metric
+from .. import kp_matcher
 from .CNS.cns.benchmark.pipeline import CorrespondenceBasedPipeline, VisOpt
+from .CNS.cns.utils.perception import CameraIntrinsic
+from .cnsv2_simple_cilent import SimpleClient
+from .vs_controller_base import VisualServoControllerBase
 
 
 class CNSv1(VisualServoControllerBase):
@@ -28,14 +30,10 @@ class CNSv1(VisualServoControllerBase):
 
     def update(self, *args, **kwargs):
         if "cur_img" in kwargs:
-            assert isinstance(
-                kwargs["cur_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["cur_img"], np.ndarray), "Image should be a numpy array"
             self.cur_img = kwargs["cur_img"]
         if "tar_img" in kwargs:
-            assert isinstance(
-                kwargs["tar_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["tar_img"], np.ndarray), "Image should be a numpy array"
             self.tar_img = kwargs["tar_img"]
 
     def calc_vel(self, depth_hint, mask=None):
@@ -59,14 +57,10 @@ class CNSv2(VisualServoControllerBase):
 
     def update(self, *args, **kwargs):
         if "cur_img" in kwargs:
-            assert isinstance(
-                kwargs["cur_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["cur_img"], np.ndarray), "Image should be a numpy array"
             self.cur_img = kwargs["cur_img"]
         if "tar_img" in kwargs:
-            assert isinstance(
-                kwargs["tar_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["tar_img"], np.ndarray), "Image should be a numpy array"
             self.tar_img = kwargs["tar_img"]
 
     def calc_vel(self, depth_hint, mask=None):
@@ -85,9 +79,7 @@ class CNSv2(VisualServoControllerBase):
 
 
 class IBVS(VisualServoControllerBase):
-    def __init__(
-        self, camera: Camera, kp_algo=kp_matcher.KpMatchAlgo, *args, **kwargs
-    ) -> None:
+    def __init__(self, camera: Camera, kp_algo=kp_matcher.KpMatchAlgo, *args, **kwargs) -> None:
         self.kp_algo = kp_algo(*args, **kwargs)
         self.camera = camera
         self.cur_img = None
@@ -98,24 +90,16 @@ class IBVS(VisualServoControllerBase):
     def update(self, *args, **kwargs):
 
         if "cur_img" in kwargs:
-            assert isinstance(
-                kwargs["cur_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["cur_img"], np.ndarray), "Image should be a numpy array"
             self.cur_img = kwargs["cur_img"]
         if "tar_img" in kwargs:
-            assert isinstance(
-                kwargs["tar_img"], np.ndarray
-            ), "Image should be a numpy array"
+            assert isinstance(kwargs["tar_img"], np.ndarray), "Image should be a numpy array"
             self.tar_img = kwargs["tar_img"]
         if "cur_depth" in kwargs:
-            assert isinstance(
-                kwargs["cur_depth"], np.ndarray
-            ), "Depth should be a numpy array"
+            assert isinstance(kwargs["cur_depth"], np.ndarray), "Depth should be a numpy array"
             self.cur_depth = kwargs["cur_depth"]
         if "tar_depth" in kwargs:
-            assert isinstance(
-                kwargs["tar_depth"], np.ndarray
-            ), "Depth should be a numpy array"
+            assert isinstance(kwargs["tar_depth"], np.ndarray), "Depth should be a numpy array"
             self.tar_depth = kwargs["tar_depth"]
 
     def cal_vel_from_kp(self, tar_kp, cur_kp, tar_z, cur_z):
@@ -163,13 +147,13 @@ class IBVS(VisualServoControllerBase):
         vel = np.linalg.lstsq(mean_L, error)[0]
         return vel
 
-    def calc_vel(self, mask=None, use_median_depth=False):
+    def calc_vel(self, mask=None, use_median_depth=False, origin_image=None):
         assert (
             self.kp_algo is not None and self.camera is not None
         ), "KeyPoint Extractor or Camera not provided"
         try:
             tar_kp, cur_kp, match_img = self.kp_algo.match(
-                self.tar_img, self.cur_img, mask, True, self.camera
+                self.tar_img, self.cur_img, mask, True, self.camera, origin_image
             )
             tar_kp_int = np.floor(tar_kp).astype(int)
             cur_kp_int = np.floor(cur_kp).astype(int)
@@ -189,15 +173,15 @@ class IBVS(VisualServoControllerBase):
 
             vel = self.cal_vel_from_kp(tar_kp, cur_kp, tar_z, cur_z)
             score = metric.calc_ssim(self.tar_img, self.cur_img)
-            cv2.putText(
-                match_img,
-                "SSIM score: {:.3f}".format(score),
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (100, 100, 100),
-                2,
-            )
+            # cv2.putText(
+            #     match_img,
+            #     "SSIM score: {:.3f}".format(score),
+            #     (10, 60),
+            #     cv2.FONT_HERSHEY_SIMPLEX,
+            #     0.8,
+            #     (100, 100, 100),
+            #     2,
+            # )
             return True, vel, score, match_img
         except Exception as e:
             return False, None, None, None

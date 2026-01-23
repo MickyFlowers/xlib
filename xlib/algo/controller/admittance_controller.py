@@ -223,22 +223,22 @@ class VelocityAdmittanceController(object):
         f = self._apply_deadzone(f_ext)
 
         # 计算当前速度偏移的测量值：实际速度 - 目标速度
-        x_dot_measured = tcp_vel - target_vel
+        x_dot_measured = self.x_dot - target_vel
 
         # 滤波融合：测量值与积分值
-        self.x_dot = self.vel_filter_alpha * x_dot_measured + (1 - self.vel_filter_alpha) * self.x_dot
+        # self.x_dot = self.vel_filter_alpha * x_dot_measured + (1 - self.vel_filter_alpha) * self.x_dot
 
         # 一阶导纳动力学（无K项，纯速度控制）: M·ẍ + D·ẋ = f
         # ẍ = M⁻¹·(f - D·ẋ)
-        x_ddot = np.linalg.inv(self.M) @ (f - self.D @ self.x_dot)
+        x_ddot = np.linalg.inv(self.M) @ (f - self.D @ x_dot_measured)
 
         # 积分得到速度偏移
         self.x_dot += x_ddot * dt
-
+        return self.x_dot
         # 输出速度 = 目标速度 + 导纳产生的速度偏移
-        output_vel = target_vel + self.x_dot
+        # output_vel = tcp_vel + x_ddot * dt
 
-        return output_vel
+        # return output_vel
 
     def update_no_feedback(self, dt, target_vel, f_ext=None):
         """

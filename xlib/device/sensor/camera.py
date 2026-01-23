@@ -169,10 +169,10 @@ class RealSenseCamera(Camera):
         else:
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
         
-        if short_range:
-            depth_sensor.set_option(rs.option.visual_preset, 5)
-        else:
-            depth_sensor.set_option(rs.option.visual_preset, 3)
+        # if short_range:
+        #     depth_sensor.set_option(rs.option.visual_preset, 5)
+        # else:
+        #     depth_sensor.set_option(rs.option.visual_preset, 3)
         self.depth_scale = depth_sensor.get_depth_scale()
         profile = cfg.get_stream(rs.stream.color)
         intrinsics = profile.as_video_stream_profile().get_intrinsics()

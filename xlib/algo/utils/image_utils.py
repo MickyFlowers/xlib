@@ -1,7 +1,11 @@
 import io
 
 import numpy as np
-from moviepy.editor import ImageSequenceClip
+try:
+    
+    from moviepy.editor import ImageSequenceClip
+except:
+    from moviepy import ImageSequenceClip
 from PIL import Image
 import os
 
